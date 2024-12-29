@@ -1,9 +1,10 @@
 package main
 
-import (
-	"fmt"
-)
+import "github.com/amitschendel/curing/pkg/executer"
 
 func main() {
-	fmt.Println("Hello, World!")
+	_, err := executer.NewExecuter()
+	if err != nil {
+		panic(err)
+	}
 }
