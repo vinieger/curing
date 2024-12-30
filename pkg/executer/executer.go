@@ -264,7 +264,7 @@ func (e *Executer) Close() {
 	e.cancelFunc()
 
 	if e.ring != nil {
-		e.ring.Close()
+		_ = e.ring.Close()
 	}
 
 	close(e.commands)

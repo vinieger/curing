@@ -17,14 +17,14 @@ func main() {
 
 	ctx := context.Background()
 
-	executer, err := executer.NewExecuter(cfg, ctx)
+	e, err := executer.NewExecuter(cfg, ctx)
 	if err != nil {
 		panic(err)
 	}
 
 	// Set the commands channel
-	executer.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
+	e.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
 
 	// Start the executer (this is a blocking call)
-	executer.Run()
+	e.Run()
 }
