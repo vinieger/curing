@@ -22,6 +22,9 @@ func main() {
 		panic(err)
 	}
 
+	// Set the commands channel
+	executer.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
+
 	// Start the executer (this is a blocking call)
 	executer.Run()
 }
