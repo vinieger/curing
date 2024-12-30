@@ -15,6 +15,11 @@ import (
 	"github.com/iceber/iouring-go"
 )
 
+type IExecuter interface {
+	SetCommandsChannel(commands chan string) // TODO: specify the type of the channel.
+	GetOutputChannel() chan string           // TODO: specify the type of the channel.
+}
+
 type Executer struct {
 	commands         chan string
 	output           chan string
@@ -27,7 +32,7 @@ type Executer struct {
 	commandSeparator string
 }
 
-var _ IExecuter = &Executer{}
+var _ IExecuter = (*Executer)(nil)
 
 func NewExecuter(cfg *config.Config, ctx context.Context) (*Executer, error) {
 	ring, err := iouring.New(32)
