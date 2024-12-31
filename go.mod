@@ -13,3 +13,5 @@ require (
 	golang.org/x/sys v0.0.0-20200923182605-d9f96fdee20d // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/iceber/iouring-go => github.com/royalcat/iouring-go v0.0.0-20240925200811-286062ac1b23
