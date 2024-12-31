@@ -3,33 +3,35 @@
 package executer
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"io"
 	"log/slog"
 	"net"
-	"strings"
 	"syscall"
 	"time"
 
+	"github.com/amitschendel/curing/pkg/common"
 	"github.com/amitschendel/curing/pkg/config"
 	"github.com/iceber/iouring-go"
 )
 
 type IExecuter interface {
-	SetCommandsChannel(commands chan string) // TODO: specify the type of the channel.
-	GetOutputChannel() chan string           // TODO: specify the type of the channel.
+	SetCommandsChannel(commands chan common.Command)
+	GetOutputChannel() chan common.Result
 }
 
 type Executer struct {
-	commands         chan string
-	output           chan string
-	ring             *iouring.IOURing
-	cfg              *config.Config
-	resultChan       chan iouring.Result
-	ctx              context.Context
-	cancelFunc       context.CancelFunc
-	interval         time.Duration
-	commandSeparator string
+	commands   chan common.Command
+	output     chan common.Result
+	ring       *iouring.IOURing
+	cfg        *config.Config
+	resultChan chan iouring.Result
+	ctx        context.Context
+	cancelFunc context.CancelFunc
+	interval   time.Duration
+	buffer     bytes.Buffer // Buffer for gob encoding/decoding
 }
 
 var _ IExecuter = (*Executer)(nil)
@@ -42,15 +44,14 @@ func NewExecuter(cfg *config.Config, ctx context.Context) (*Executer, error) {
 
 	ctx, cancel := context.WithCancel(ctx)
 	return &Executer{
-		ring:             ring,
-		cfg:              cfg,
-		ctx:              ctx,
-		cancelFunc:       cancel,
-		commands:         make(chan string, 100), // Buffered to handle multiple commands
-		output:           make(chan string, 100),
-		resultChan:       make(chan iouring.Result, 32),
-		interval:         time.Duration(cfg.ConnectIntervalSec) * time.Second,
-		commandSeparator: "\n", // Default separator, can be made configurable
+		ring:       ring,
+		cfg:        cfg,
+		ctx:        ctx,
+		cancelFunc: cancel,
+		commands:   make(chan common.Command, 100),
+		output:     make(chan common.Result, 100),
+		resultChan: make(chan iouring.Result, 32),
+		interval:   time.Duration(cfg.ConnectIntervalSec) * time.Second,
 	}, nil
 }
 
@@ -59,16 +60,11 @@ func (e *Executer) SetInterval(d time.Duration) {
 	e.interval = d
 }
 
-// SetCommandSeparator allows configuring how commands are separated in the input
-func (e *Executer) SetCommandSeparator(sep string) {
-	e.commandSeparator = sep
-}
-
-func (e *Executer) SetCommandsChannel(commands chan string) {
+func (e *Executer) SetCommandsChannel(commands chan common.Command) {
 	e.commands = commands
 }
 
-func (e *Executer) GetOutputChannel() chan string {
+func (e *Executer) GetOutputChannel() chan common.Result {
 	return e.output
 }
 
@@ -100,44 +96,97 @@ func (e *Executer) connectReadAndProcess() {
 		return
 	}
 
-	// Ensure connection is closed after we're done
 	defer func() {
 		if err := e.close(fd); err != nil {
 			slog.Error("Error closing connection", "error", err)
 		}
 	}()
 
-	// Read data
-	data, err := e.readUntilEmpty(fd)
-	if err != nil && err != io.EOF {
-		slog.Error("Error reading from connection", "error", err)
+	// Send GetCommands request
+	req := &common.Request{
+		Type: common.GetCommands,
+	}
+	if err := e.sendGobRequest(fd, req); err != nil {
+		slog.Error("Error sending request", "error", err)
 		return
 	}
 
-	if len(data) > 0 {
-		// Process commands
-		e.processCommands(string(data))
+	// Read and decode commands
+	commands, err := e.readGobCommands(fd)
+	if err != nil && err != io.EOF {
+		slog.Error("Error reading commands", "error", err)
+		return
+	}
+
+	if len(commands) > 0 {
+		e.processCommands(commands)
 	}
 }
 
-// TODO: Use the real command.
-// processCommands splits the input data into individual commands and processes them
-func (e *Executer) processCommands(data string) {
-	commands := strings.Split(strings.TrimSpace(data), e.commandSeparator)
+func (e *Executer) sendGobRequest(fd int, req *common.Request) error {
+	e.buffer.Reset()
+	encoder := gob.NewEncoder(&e.buffer)
 
+	if err := encoder.Encode(req); err != nil {
+		return err
+	}
+
+	_, err := e.write(fd, e.buffer.Bytes())
+	return err
+}
+
+func (e *Executer) readGobCommands(fd int) ([]common.Command, error) {
+	data, err := e.readUntilEmpty(fd)
+	if err != nil {
+		return nil, err
+	}
+
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	var commands []common.Command
+	if err := decoder.Decode(&commands); err != nil {
+		return nil, err
+	}
+
+	return commands, nil
+}
+
+func (e *Executer) sendResults(fd int, results []common.Result) error {
+	req := &common.Request{
+		Type:    common.SendResults,
+		Results: results,
+	}
+	return e.sendGobRequest(fd, req)
+}
+
+func (e *Executer) processCommands(commands []common.Command) {
 	for _, cmd := range commands {
-		cmd = strings.TrimSpace(cmd)
-		if cmd == "" {
-			continue
-		}
-
 		slog.Info("Processing command", "command", cmd)
 		e.commands <- cmd
 
-		// TODO: Here you can add command execution logic
-		// For example:
-		// result := executeCommand(cmd)
-		// e.output <- result
+		// Collect results from output channel
+		var results []common.Result
+		// Non-blocking collection of results
+		select {
+		case result := <-e.output:
+			results = append(results, result)
+		default:
+			// No results available
+		}
+
+		// If we have results, send them back
+		if len(results) > 0 {
+			fd, err := e.connect()
+			if err != nil {
+				slog.Error("Error connecting to send results", "error", err)
+				continue
+			}
+
+			if err := e.sendResults(fd, results); err != nil {
+				slog.Error("Error sending results", "error", err)
+			}
+
+			e.close(fd)
+		}
 	}
 }
 
