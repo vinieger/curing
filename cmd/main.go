@@ -3,28 +3,26 @@
 package main
 
 import (
-	"context"
-
-	"github.com/amitschendel/curing/pkg/config"
-	"github.com/amitschendel/curing/pkg/executer"
+	"fmt"
 )
 
 func main() {
-	cfg, err := config.LoadConfig("config.json")
-	if err != nil {
-		panic(err)
-	}
+	fmt.Println("Hello, world!")
+	// cfg, err := config.LoadConfig("config.json")
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	ctx := context.Background()
+	// ctx := context.Background()
 
-	e, err := executer.NewExecuter(cfg, ctx)
-	if err != nil {
-		panic(err)
-	}
+	// e, err := executer.NewExecuter(cfg, ctx)
+	// if err != nil {
+	// 	panic(err)
+	// }
 
-	// Set the commands channel
-	e.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
+	// // Set the commands channel
+	// e.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
 
-	// Start the executer (this is a blocking call)
-	e.Run()
+	// // Start the executer (this is a blocking call)
+	// e.Run()
 }
