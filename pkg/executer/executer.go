@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"sync"
 	"syscall"
 	"time"
 
@@ -32,6 +33,7 @@ type Executer struct {
 	cancelFunc context.CancelFunc
 	interval   time.Duration
 	buffer     bytes.Buffer // Buffer for gob encoding/decoding
+	closeOnce  sync.Once
 }
 
 var _ IExecuter = (*Executer)(nil)
@@ -226,7 +228,13 @@ func (e *Executer) readUntilEmpty(fd int) ([]byte, error) {
 
 // connect establishes a connection to the server
 func (e *Executer) connect() (int, error) {
-	var sockfd int
+	// Create the socket first
+	sockfd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		return -1, err
+	}
+
+	// Create the connection request with the initialized sockfd
 	request, err := iouring.Connect(sockfd, &syscall.SockaddrInet4{
 		Port: e.cfg.Server.Port,
 		Addr: func() [4]byte {
@@ -236,22 +244,22 @@ func (e *Executer) connect() (int, error) {
 		}(),
 	})
 	if err != nil {
+		syscall.Close(sockfd) // Make sure to close the socket if we fail
 		return -1, err
 	}
 
 	if _, err := e.ring.SubmitRequest(request, e.resultChan); err != nil {
+		syscall.Close(sockfd) // Close socket on error
 		return -1, err
 	}
 
 	result := <-e.resultChan
 	if result.Err() != nil {
+		syscall.Close(sockfd) // Close socket on error
 		return -1, result.Err()
 	}
 
-	sockfd = result.ReturnValue0().(int)
-	sockaddr := result.ReturnValue1().(*syscall.SockaddrInet4)
-	slog.Info("Connected to server", "sockfd", sockfd, "sockaddr", sockaddr)
-
+	slog.Info("Connected to server", "sockfd", sockfd)
 	return sockfd, nil
 }
 
@@ -310,14 +318,16 @@ func (e *Executer) close(fd int) error {
 
 // Close gracefully shuts down the Executer
 func (e *Executer) Close() {
-	e.cancelFunc()
+	e.closeOnce.Do(func() {
+		e.cancelFunc()
 
-	if e.ring != nil {
-		_ = e.ring.Close()
-	}
+		if e.ring != nil {
+			_ = e.ring.Close()
+		}
 
-	close(e.commands)
-	close(e.output)
+		close(e.commands)
+		close(e.output)
 
-	slog.Info("Executer closed")
+		slog.Info("Executer closed")
+	})
 }
