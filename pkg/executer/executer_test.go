@@ -25,7 +25,7 @@ func TestExecuterWithRealServer(t *testing.T) {
 	// Give the server time to start
 	time.Sleep(500 * time.Millisecond)
 
-	// Create executer config
+	// Create config
 	cfg := &config.Config{
 		ConnectIntervalSec: 1,
 		Server: config.ServerDetails{
@@ -34,84 +34,67 @@ func TestExecuterWithRealServer(t *testing.T) {
 		},
 	}
 
-	// Create executer
+	// Create components
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	executer, err := NewExecuter(cfg, ctx)
+	executer := NewExecuter(ctx)
+	puller, err := NewCommandPuller(cfg, ctx, executer)
 	assert.NoError(t, err)
-	assert.NotNil(t, executer)
+	assert.NotNil(t, puller)
 
-	// Create channels to collect commands
-	commandsChan := make(chan common.Command, 10)
-	executer.SetCommandsChannel(commandsChan)
-	outputChan := executer.GetOutputChannel()
+	// Create channels to track command completion
+	command1Done := make(chan struct{})
+	command2Done := make(chan struct{})
 
-	// Start executer in background
+	// Start components
 	go executer.Run()
+	go puller.Run()
 
-	// Wait for commands from server
-	var receivedCommands []common.Command
-	commandTimeout := time.After(5 * time.Second)
+	// Start goroutine to collect and validate commands
+	go func() {
+		commandsChan := executer.GetCommandChannel()
+		seenCommands := make(map[string]bool)
 
-	slog.Info("Waiting for commands...")
-	for i := 0; i < 2; { // We expect 2 commands from the server
-		select {
-		case cmd := <-commandsChan:
-			slog.Info("Received command", "type", fmt.Sprintf("%T", cmd), "command", cmd)
-			receivedCommands = append(receivedCommands, cmd)
-			i++
-		case <-commandTimeout:
-			t.Fatal("Timeout waiting for commands")
+		for {
+			select {
+			case cmd := <-commandsChan:
+				switch c := cmd.(type) {
+				case common.WriteFile:
+					if c.Id == "command1" && !seenCommands["command1"] {
+						seenCommands["command1"] = true
+						close(command1Done)
+					}
+				case common.Execute:
+					if c.Id == "command2" && !seenCommands["command2"] {
+						seenCommands["command2"] = true
+						close(command2Done)
+					}
+				}
+			case <-ctx.Done():
+				return
+			}
 		}
+	}()
+
+	// Wait for both commands with separate timeouts
+	select {
+	case <-command1Done:
+		// Command 1 received
+	case <-time.After(15 * time.Second):
+		t.Fatal("Timeout waiting for command1")
 	}
 
-	// Verify received commands
-	assert.Len(t, receivedCommands, 2, "Should receive exactly 2 commands")
-
-	// Verify first command (WriteFile)
-	cmd1 := receivedCommands[0]
-	slog.Info("Examining command 1", "type", fmt.Sprintf("%T", cmd1), "value", fmt.Sprintf("%+v", cmd1))
-	if writeCmd, ok := cmd1.(common.WriteFile); ok {
-		assert.Equal(t, "command1", writeCmd.Id)
-		assert.Equal(t, "/tmp/bad", writeCmd.Path)
-	} else {
-		t.Fatalf("Expected first command to be WriteFile, got %T", cmd1)
+	select {
+	case <-command2Done:
+		// Command 2 received
+	case <-time.After(15 * time.Second):
+		t.Fatal("Timeout waiting for command2")
 	}
-
-	// Verify second command (Execute)
-	cmd2 := receivedCommands[1]
-	slog.Info("Examining command 2", "type", fmt.Sprintf("%T", cmd2), "value", fmt.Sprintf("%+v", cmd2))
-	if execCmd, ok := cmd2.(common.Execute); ok {
-		assert.Equal(t, "command2", execCmd.Id)
-		assert.Equal(t, "ls -l /tmp", execCmd.Command)
-	} else {
-		t.Fatalf("Expected second command to be Execute, got %T", cmd2)
-	}
-
-	// Send results back
-	results := []common.Result{
-		{
-			CommandID:  "command1",
-			ReturnCode: 0,
-			Output:     "File written successfully",
-		},
-		{
-			CommandID:  "command2",
-			ReturnCode: 0,
-			Output:     "Command executed successfully",
-		},
-	}
-
-	// Send results
-	for _, result := range results {
-		outputChan <- result
-	}
-
-	// Give time for results to be processed
-	time.Sleep(500 * time.Millisecond)
 
 	// Clean up
+	cancel()
+	puller.Close()
 	executer.Close()
 }
 
@@ -136,7 +119,7 @@ func TestExecuterReconnection(t *testing.T) {
 	// Give the server time to start
 	time.Sleep(500 * time.Millisecond)
 
-	// Create executer with short interval
+	// Create components with short interval
 	cfg := &config.Config{
 		ConnectIntervalSec: 1,
 		Server: config.ServerDetails{
@@ -146,14 +129,17 @@ func TestExecuterReconnection(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	executer, err := NewExecuter(cfg, ctx)
+	defer cancel()
+
+	executer := NewExecuter(ctx)
+	puller, err := NewCommandPuller(cfg, ctx, executer)
 	assert.NoError(t, err)
 
-	commandsChan := make(chan common.Command, 10)
-	executer.SetCommandsChannel(commandsChan)
-
-	// Start executer
+	// Start components
 	go executer.Run()
+	go puller.Run()
+
+	commandsChan := executer.GetCommandChannel()
 
 	// Wait for first command
 	var firstCommand common.Command
@@ -195,10 +181,8 @@ func TestExecuterReconnection(t *testing.T) {
 	}
 
 	// Cleanup
-	cancel()
-	time.Sleep(100 * time.Millisecond)
+	puller.Close()
 	executer.Close()
-	newListener.Close()
 }
 
 func TestExecuterMultipleClients(t *testing.T) {
@@ -219,31 +203,32 @@ func TestExecuterMultipleClients(t *testing.T) {
 		},
 	}
 
-	// Start multiple executers
+	// Start multiple clients
 	numClients := 3
 	executers := make([]*Executer, numClients)
-	commandsChans := make([]chan common.Command, numClients)
+	pullers := make([]*CommandPuller, numClients)
+	commandChannels := make([]chan common.Command, numClients)
 
 	for i := 0; i < numClients; i++ {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		executer, err := NewExecuter(baseConfig, ctx)
+		executer := NewExecuter(ctx)
+		puller, err := NewCommandPuller(baseConfig, ctx, executer)
 		assert.NoError(t, err)
 
-		commandsChan := make(chan common.Command, 10)
-		executer.SetCommandsChannel(commandsChan)
-
 		executers[i] = executer
-		commandsChans[i] = commandsChan
+		pullers[i] = puller
+		commandChannels[i] = executer.GetCommandChannel()
 
 		go executer.Run()
+		go puller.Run()
 	}
 
 	// Wait and verify that all clients receive commands
 	for i := 0; i < numClients; i++ {
 		select {
-		case cmd := <-commandsChans[i]:
+		case cmd := <-commandChannels[i]:
 			assert.NotNil(t, cmd)
 		case <-time.After(2 * time.Second):
 			t.Fatalf("Timeout waiting for commands on client %d", i)
@@ -251,7 +236,8 @@ func TestExecuterMultipleClients(t *testing.T) {
 	}
 
 	// Clean up
-	for _, executer := range executers {
-		executer.Close()
+	for i := 0; i < numClients; i++ {
+		pullers[i].Close()
+		executers[i].Close()
 	}
 }

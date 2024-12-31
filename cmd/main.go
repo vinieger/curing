@@ -3,26 +3,45 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"github.com/amitschendel/curing/pkg/config"
+	"github.com/amitschendel/curing/pkg/executer"
 )
 
 func main() {
-	fmt.Println("Hello, world!")
-	// cfg, err := config.LoadConfig("config.json")
-	// if err != nil {
-	// 	panic(err)
-	// }
+	ctx := context.Background()
+	cfg := &config.Config{
+		ConnectIntervalSec: 5,
+		Server: config.ServerDetails{
+			Host: "localhost",
+			Port: 8080,
+		},
+	}
 
-	// ctx := context.Background()
+	// Create the executer
+	commandExecuter := executer.NewExecuter(ctx)
 
-	// e, err := executer.NewExecuter(cfg, ctx)
-	// if err != nil {
-	// 	panic(err)
-	// }
+	// Create the command puller
+	puller, err := executer.NewCommandPuller(cfg, ctx, commandExecuter)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	// // Set the commands channel
-	// e.SetCommandsChannel(make(chan string)) // TODO: put the real channel here.
+	// Start both components
+	go commandExecuter.Run()
+	go puller.Run()
 
-	// // Start the executer (this is a blocking call)
-	// e.Run()
+	// Wait for shutdown signal
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	// Cleanup
+	puller.Close()
+	commandExecuter.Close()
 }
