@@ -63,30 +63,38 @@ func (e *Executer) executeCommand(cmd common.Command) {
 	var result common.Result
 
 	switch c := cmd.(type) {
-	case *common.WriteFile:
+	case common.WriteFile:
 		slog.Info("Executing WriteFile command", "commandID", c.Id, "path", c.Path)
+		// Add execution logic for WriteFile command here
 		result = common.Result{
 			CommandID:  c.Id,
 			ReturnCode: 0,
 			Output:     "File written successfully",
 		}
-	case *common.Execute:
+		// Make sure to send result
+		select {
+		case e.output <- result:
+			slog.Info("WriteFile command result sent", "commandID", result.CommandID)
+		case <-e.ctx.Done():
+			return
+		}
+
+	case common.Execute:
 		slog.Info("Executing Execute command", "commandID", c.Id, "command", c.Command)
 		result = common.Result{
 			CommandID:  c.Id,
 			ReturnCode: 0,
 			Output:     "Command executed successfully",
 		}
-	default:
-		slog.Error("Unknown command type", "type", c)
-		return
-	}
+		select {
+		case e.output <- result:
+			slog.Info("Execute command result sent", "commandID", result.CommandID)
+		case <-e.ctx.Done():
+			return
+		}
 
-	select {
-	case e.output <- result:
-		slog.Info("Command execution result sent", "commandID", result.CommandID)
-	case <-e.ctx.Done():
-		slog.Info("Context cancelled while sending result", "commandID", result.CommandID)
+	default:
+		slog.Error("Unknown command type", "type", cmd)
 		return
 	}
 }

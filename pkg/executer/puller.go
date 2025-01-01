@@ -276,8 +276,9 @@ func (cp *CommandPuller) read(fd int, buf []byte) (int, error) {
 	}
 
 	n := result.ReturnValue0().(int)
-	buf, _ = result.GetRequestBuffer()
-	buf = buf[:n]
+	readBuf, _ := result.GetRequestBuffer()
+	// Copy the data into the provided buffer
+	copy(buf[:n], readBuf[:n])
 
 	return n, nil
 }

@@ -46,8 +46,8 @@ func handleRequest(conn net.Conn) {
 		_ = conn.Close()
 	}(conn)
 
-	encoder := gob.NewEncoder(conn)
 	decoder := gob.NewDecoder(conn)
+	encoder := gob.NewEncoder(conn)
 
 	// receive request
 	r := &common.Request{}
@@ -60,22 +60,21 @@ func handleRequest(conn net.Conn) {
 	// send response
 	switch r.Type {
 	case common.GetCommands:
-		c := []common.Command{
-			&common.WriteFile{Id: "command1", Path: "/tmp/bad"},
-			&common.Execute{Id: "command2", Command: "ls -l /tmp"},
+		commands := []common.Command{
+			common.WriteFile{Id: "command1", Path: "/tmp/bad"},
+			common.Execute{Id: "command2", Command: "ls -l /tmp"},
 		}
-		if err := encoder.Encode(c); err != nil {
+
+		if err := encoder.Encode(commands); err != nil {
 			slog.Error("Failed to encode commands", "error", err)
 			return
 		}
-		// Ensure the commands are sent before closing
-		if f, ok := conn.(interface{ Flush() error }); ok {
-			_ = f.Flush()
-		}
+
 	case common.SendResults:
 		for _, r := range r.Results {
 			slog.Info("Received result", "result", r)
 		}
+
 	default:
 		slog.Error("Unknown request type", "type", r.Type)
 	}
