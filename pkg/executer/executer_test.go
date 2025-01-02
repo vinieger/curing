@@ -34,7 +34,8 @@ func TestExecuterWithRealServer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	executer := NewExecuter(ctx)
+	executer, err := NewExecuter(ctx)
+	assert.NoError(t, err)
 	puller, err := NewCommandPuller(cfg, ctx, executer)
 	assert.NoError(t, err)
 	assert.NotNil(t, puller)

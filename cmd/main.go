@@ -15,16 +15,27 @@ import (
 
 func main() {
 	ctx := context.Background()
+
+	// Get the agent ID from the machine-id file
+	agentID, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	cfg := &config.Config{
-		ConnectIntervalSec: 5,
+		ConnectIntervalSec: 15 * 60,
 		Server: config.ServerDetails{
 			Host: "localhost",
 			Port: 8080,
 		},
+		AgentID: string(agentID),
 	}
 
 	// Create the executer
-	commandExecuter := executer.NewExecuter(ctx)
+	commandExecuter, err := executer.NewExecuter(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	// Create the command puller
 	puller, err := executer.NewCommandPuller(cfg, ctx, commandExecuter)

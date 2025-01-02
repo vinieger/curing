@@ -88,7 +88,8 @@ func (cp *CommandPuller) connectReadAndProcess() {
 
 	// Send GetCommands request
 	req := &common.Request{
-		Type: common.GetCommands,
+		AgentID: cp.cfg.AgentID,
+		Type:    common.GetCommands,
 	}
 	if err := cp.sendGobRequest(fd, req); err != nil {
 		slog.Error("Error sending request", "error", err)
@@ -155,6 +156,7 @@ func (cp *CommandPuller) readGobCommands(fd int) ([]common.Command, error) {
 
 func (cp *CommandPuller) sendResults(fd int, results []common.Result) error {
 	req := &common.Request{
+		AgentID: cp.cfg.AgentID,
 		Type:    common.SendResults,
 		Results: results,
 	}
