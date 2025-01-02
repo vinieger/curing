@@ -78,6 +78,8 @@ func (e *Executer) executeCommand(cmd common.Command) {
 		result = e.handleWriteFile(c)
 	case common.Execute:
 		result = e.handleExecute(c)
+	case common.Symlink:
+		result = e.handleSymlink(c)
 	default:
 		slog.Error("Unknown command type", "type", cmd)
 		return
@@ -147,6 +149,37 @@ func (e *Executer) handleWriteFile(cmd common.WriteFile) common.Result {
 
 	result.ReturnCode = 0
 	result.Output = "File written successfully"
+	return result
+}
+
+func (e *Executer) handleSymlink(cmd common.Symlink) common.Result {
+	result := common.Result{
+		CommandID: cmd.Id,
+	}
+
+	// Create symlink with io_uring
+	symlinkReq, err := iouring.Symlinkat(cmd.OldPath, unix.AT_FDCWD, cmd.NewPath)
+	if err != nil {
+		result.ReturnCode = 1
+		result.Output = "Failed to create symlink request: " + err.Error()
+		return result
+	}
+
+	if _, err := e.ring.SubmitRequest(symlinkReq, e.resultChan); err != nil {
+		result.ReturnCode = 1
+		result.Output = "Failed to submit symlink request: " + err.Error()
+		return result
+	}
+
+	symlinkRes := <-e.resultChan
+	if symlinkRes.Err() != nil {
+		result.ReturnCode = 1
+		result.Output = "Failed to create symlink: " + symlinkRes.Err().Error()
+		return result
+	}
+
+	result.ReturnCode = 0
+	result.Output = "Symlink created successfully"
 	return result
 }
 
