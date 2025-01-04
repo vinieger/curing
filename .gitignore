@@ -172,3 +172,9 @@ fabric.properties
 .ionide
 
 # End of https://www.toptal.com/developers/gitignore/api/linux,go,visualstudiocode,goland
+
+main
+server
+client
+output.txt
+server.elf
