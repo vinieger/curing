@@ -22,14 +22,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cfg := &config.Config{
-		ConnectIntervalSec: 15 * 60,
-		Server: config.ServerDetails{
-			Host: "localhost",
-			Port: 8080,
-		},
-		AgentID: string(agentID),
+	// Load the configuration
+	cfg, err := config.LoadConfig("cmd/config.json")
+	if err != nil {
+		log.Fatal(err)
 	}
+	cfg.AgentID = string(agentID)
 
 	// Create the executer
 	commandExecuter, err := executer.NewExecuter(ctx)

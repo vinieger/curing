@@ -3,5 +3,5 @@
 		"host": "localhost",
 		"port": 8080
 	},
-	"connect_interval_sec": 10
+	"connect_interval_sec": 900
 }
