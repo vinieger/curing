@@ -3,7 +3,6 @@
 package client
 
 import (
-	"bytes"
 	"context"
 	"encoding/gob"
 	"fmt"
@@ -27,12 +26,12 @@ type CommandPuller struct {
 	ctx        context.Context
 	cancelFunc context.CancelFunc
 	interval   time.Duration
-	buffer     bytes.Buffer
 	closeOnce  sync.Once
 	fd         int
 }
 
 var _ io.Reader = (*CommandPuller)(nil)
+var _ io.Writer = (*CommandPuller)(nil)
 
 func NewCommandPuller(cfg *config.Config, ctx context.Context, executer IExecuter) (*CommandPuller, error) {
 	ring, err := iouring.New(32)
@@ -113,15 +112,11 @@ func (cp *CommandPuller) connectReadAndProcess() {
 }
 
 func (cp *CommandPuller) sendGobRequest(req *common.Request) error {
-	cp.buffer.Reset()
-	encoder := gob.NewEncoder(&cp.buffer)
-
+	encoder := gob.NewEncoder(cp)
 	if err := encoder.Encode(req); err != nil {
-		return err
+		return fmt.Errorf("failed to encode request: %w", err)
 	}
-
-	_, err := cp.write(cp.buffer.Bytes())
-	return err
+	return nil
 }
 
 func (cp *CommandPuller) readGobCommands() ([]common.Command, error) {
@@ -232,7 +227,7 @@ func (cp *CommandPuller) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (cp *CommandPuller) write(buf []byte) (int, error) {
+func (cp *CommandPuller) Write(buf []byte) (int, error) {
 	request := iouring.Write(cp.fd, buf)
 	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
 		return -1, err
