@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"time"
 
 	"github.com/amitschendel/curing/pkg/common"
 )
@@ -67,23 +66,9 @@ func handleRequest(conn net.Conn) {
 			common.Execute{Id: "command3", Command: "ls -l /tmp"},
 		}
 
-		// Set write deadline
-		if conn, ok := conn.(*net.TCPConn); ok {
-			if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
-				slog.Error("Failed to set write deadline", "error", err)
-				return
-			}
-		}
-
 		if err := encoder.Encode(commands); err != nil {
 			slog.Error("Failed to encode commands", "error", err)
 			return
-		}
-
-		if conn, ok := conn.(*net.TCPConn); ok {
-			if err := conn.CloseWrite(); err != nil {
-				slog.Error("Failed to close write", "error", err)
-			}
 		}
 
 	case common.SendResults:
