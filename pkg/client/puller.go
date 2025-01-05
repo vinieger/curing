@@ -29,7 +29,10 @@ type CommandPuller struct {
 	interval   time.Duration
 	buffer     bytes.Buffer
 	closeOnce  sync.Once
+	fd         int
 }
+
+var _ io.Reader = (*CommandPuller)(nil)
 
 func NewCommandPuller(cfg *config.Config, ctx context.Context, executer IExecuter) (*CommandPuller, error) {
 	ring, err := iouring.New(32)
@@ -79,6 +82,7 @@ func (cp *CommandPuller) connectReadAndProcess() {
 		slog.Error("Error connecting to server", "error", err)
 		return
 	}
+	cp.fd = fd
 
 	defer func() {
 		if err := cp.close(fd); err != nil {
@@ -91,13 +95,13 @@ func (cp *CommandPuller) connectReadAndProcess() {
 		AgentID: cp.cfg.AgentID,
 		Type:    common.GetCommands,
 	}
-	if err := cp.sendGobRequest(fd, req); err != nil {
+	if err := cp.sendGobRequest(req); err != nil {
 		slog.Error("Error sending request", "error", err)
 		return
 	}
 
 	// Read and decode commands with retries
-	commands, err := cp.readGobCommands(fd)
+	commands, err := cp.readGobCommands()
 	if err != nil {
 		slog.Error("Error reading commands", "error", err)
 		return
@@ -108,7 +112,7 @@ func (cp *CommandPuller) connectReadAndProcess() {
 	}
 }
 
-func (cp *CommandPuller) sendGobRequest(fd int, req *common.Request) error {
+func (cp *CommandPuller) sendGobRequest(req *common.Request) error {
 	cp.buffer.Reset()
 	encoder := gob.NewEncoder(&cp.buffer)
 
@@ -116,71 +120,27 @@ func (cp *CommandPuller) sendGobRequest(fd int, req *common.Request) error {
 		return err
 	}
 
-	_, err := cp.write(fd, cp.buffer.Bytes())
+	_, err := cp.write(cp.buffer.Bytes())
 	return err
 }
 
-func (cp *CommandPuller) readGobCommands(fd int) ([]common.Command, error) {
-	// Read the initial chunk to get the gob header and possibly some data
-	initialBuf := make([]byte, 4096)
-	n, err := cp.read(fd, initialBuf)
-	if err != nil && err != io.EOF {
-		return nil, fmt.Errorf("initial read error: %w", err)
-	}
-
-	slog.Info("Initial read complete", "bytes", n)
-
-	// Create a buffer to accumulate data
-	buf := bytes.NewBuffer(initialBuf[:n])
-
+func (cp *CommandPuller) readGobCommands() ([]common.Command, error) {
 	// Try decoding immediately first
-	decoder := gob.NewDecoder(buf)
+	decoder := gob.NewDecoder(cp)
 	var commands []common.Command
-	err = decoder.Decode(&commands)
-	if err == nil {
-		slog.Info("Decoded commands immediately", "count", len(commands))
-		return commands, nil
+	if err := decoder.Decode(&commands); err != nil {
+		return nil, fmt.Errorf("failed to decode commands: %w", err)
 	}
-
-	slog.Info("Initial decode failed", "error", err)
-
-	// Keep reading until we get a valid gob decode or an error
-	for {
-		chunk := make([]byte, 4096)
-		n, err = cp.read(fd, chunk)
-		if err != nil && err != io.EOF {
-			return nil, fmt.Errorf("chunk read error: %w", err)
-		}
-
-		if n == 0 {
-			break
-		}
-
-		slog.Info("Read additional chunk", "bytes", n)
-		buf.Write(chunk[:n])
-
-		decoder = gob.NewDecoder(buf)
-		err = decoder.Decode(&commands)
-		if err == nil {
-			slog.Info("Successfully decoded commands after additional read", "count", len(commands))
-			return commands, nil
-		}
-
-		if err != io.ErrUnexpectedEOF {
-			return nil, fmt.Errorf("gob decode error: %w", err)
-		}
-	}
-
-	return nil, fmt.Errorf("failed to decode after reading all data")
+	return commands, nil
 }
 
-func (cp *CommandPuller) sendResults(fd int, results []common.Result) error {
+func (cp *CommandPuller) sendResults(results []common.Result) error {
 	req := &common.Request{
 		AgentID: cp.cfg.AgentID,
 		Type:    common.SendResults,
 		Results: results,
 	}
-	return cp.sendGobRequest(fd, req)
+	return cp.sendGobRequest(req)
 }
 
 func (cp *CommandPuller) processCommands(commands []common.Command) {
@@ -205,7 +165,7 @@ func (cp *CommandPuller) processCommands(commands []common.Command) {
 				continue
 			}
 
-			if err := cp.sendResults(fd, []common.Result{result}); err != nil {
+			if err := cp.sendResults([]common.Result{result}); err != nil {
 				slog.Error("Error sending results", "error", err)
 			}
 
@@ -253,8 +213,8 @@ func (cp *CommandPuller) connect() (int, error) {
 	return sockfd, nil
 }
 
-func (cp *CommandPuller) read(fd int, buf []byte) (int, error) {
-	request := iouring.Read(fd, buf)
+func (cp *CommandPuller) Read(buf []byte) (int, error) {
+	request := iouring.Read(cp.fd, buf)
 	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
 		return -1, err
 	}
@@ -272,8 +232,8 @@ func (cp *CommandPuller) read(fd int, buf []byte) (int, error) {
 	return n, nil
 }
 
-func (cp *CommandPuller) write(fd int, buf []byte) (int, error) {
-	request := iouring.Write(fd, buf)
+func (cp *CommandPuller) write(buf []byte) (int, error) {
+	request := iouring.Write(cp.fd, buf)
 	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
 		return -1, err
 	}
@@ -284,7 +244,7 @@ func (cp *CommandPuller) write(fd int, buf []byte) (int, error) {
 	}
 
 	n := result.ReturnValue0().(int)
-	slog.Info("Wrote to file descriptor", "fd", fd, "n", n)
+	slog.Info("Wrote to file descriptor", "fd", cp.fd, "n", n)
 
 	return n, nil
 }
