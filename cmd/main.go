@@ -9,8 +9,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/amitschendel/curing/pkg/client"
 	"github.com/amitschendel/curing/pkg/config"
-	"github.com/amitschendel/curing/pkg/executer"
 )
 
 func main() {
@@ -30,13 +30,13 @@ func main() {
 	cfg.AgentID = string(agentID)
 
 	// Create the executer
-	commandExecuter, err := executer.NewExecuter(ctx)
+	commandExecuter, err := client.NewExecuter(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	// Create the command puller
-	puller, err := executer.NewCommandPuller(cfg, ctx, commandExecuter)
+	puller, err := client.NewCommandPuller(cfg, ctx, commandExecuter)
 	if err != nil {
 		log.Fatal(err)
 	}

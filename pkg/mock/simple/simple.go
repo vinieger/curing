@@ -3,9 +3,10 @@ package simple
 import (
 	"encoding/gob"
 	"fmt"
-	"github.com/amitschendel/curing/pkg/client"
-	"github.com/amitschendel/curing/pkg/common"
 	"net"
+
+	"github.com/amitschendel/curing/pkg/common"
+	"github.com/amitschendel/curing/pkg/mock"
 )
 
 type SimpleClient struct {
@@ -20,7 +21,7 @@ func NewSimpleClient(conn net.Conn) *SimpleClient {
 	}
 }
 
-var _ client.Client = (*SimpleClient)(nil)
+var _ mock.MockClient = (*SimpleClient)(nil)
 
 func (c SimpleClient) GetCommands() ([]common.Command, error) {
 	// send request

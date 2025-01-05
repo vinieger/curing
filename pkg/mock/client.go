@@ -1,8 +1,8 @@
-package client
+package mock
 
 import "github.com/amitschendel/curing/pkg/common"
 
-type Client interface {
+type MockClient interface {
 	GetCommands() ([]common.Command, error)
 	SendResults([]common.Result) error
 }

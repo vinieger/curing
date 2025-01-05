@@ -2,9 +2,10 @@ package simple
 
 import (
 	"fmt"
-	"github.com/amitschendel/curing/pkg/common"
 	"net"
 	"testing"
+
+	"github.com/amitschendel/curing/pkg/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
