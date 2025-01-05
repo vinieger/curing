@@ -58,7 +58,7 @@ func (cp *CommandPuller) Run() {
 	ticker := time.NewTicker(cp.interval)
 	defer ticker.Stop()
 
-	slog.Info("Starting CommandPuller")
+	slog.Debug("Starting CommandPuller")
 	cp.connectReadAndProcess()
 
 	for {
@@ -130,7 +130,7 @@ func (cp *CommandPuller) readGobCommands(fd int) ([]common.Command, error) {
 		if err != nil {
 			if err == io.EOF {
 				retries++
-				slog.Info("Retrying command read after EOF", "retry", retries)
+				slog.Debug("Retrying command read after EOF", "retry", retries)
 				time.Sleep(retryDelay)
 				continue
 			}
@@ -168,10 +168,10 @@ func (cp *CommandPuller) processCommands(commands []common.Command) {
 	outputChan := cp.executer.GetOutputChannel()
 
 	for _, cmd := range commands {
-		slog.Info("Sending command to executer", "command", cmd)
+		slog.Debug("Sending command to executer", "command", cmd)
 		select {
 		case commandChan <- cmd:
-			slog.Info("Command sent to executer", "command", cmd)
+			slog.Debug("Command sent to executer", "command", cmd)
 		case <-cp.ctx.Done():
 			return
 		}
@@ -191,7 +191,7 @@ func (cp *CommandPuller) processCommands(commands []common.Command) {
 
 			cp.close(fd)
 		case <-time.After(time.Second):
-			slog.Info("No immediate result for command", "command", cmd)
+			slog.Debug("No immediate result for command", "command", cmd)
 		case <-cp.ctx.Done():
 			return
 		}
@@ -262,7 +262,7 @@ func (cp *CommandPuller) connect() (int, error) {
 		return -1, result.Err()
 	}
 
-	slog.Info("Connected to server", "sockfd", sockfd)
+	slog.Debug("Connected to server", "sockfd", sockfd)
 	return sockfd, nil
 }
 
@@ -297,7 +297,7 @@ func (cp *CommandPuller) write(fd int, buf []byte) (int, error) {
 	}
 
 	n := result.ReturnValue0().(int)
-	slog.Info("Wrote to file descriptor", "fd", fd, "n", n)
+	slog.Debug("Wrote to file descriptor", "fd", fd, "n", n)
 
 	return n, nil
 }
@@ -313,19 +313,19 @@ func (cp *CommandPuller) close(fd int) error {
 		return result.Err()
 	}
 
-	slog.Info("Closed file descriptor", "fd", fd)
+	slog.Debug("Closed file descriptor", "fd", fd)
 	return nil
 }
 
 func (cp *CommandPuller) Close() {
 	cp.closeOnce.Do(func() {
-		slog.Info("Closing CommandPuller")
+		slog.Debug("Closing CommandPuller")
 		cp.cancelFunc()
 
 		if cp.ring != nil {
 			_ = cp.ring.Close()
 		}
 
-		slog.Info("CommandPuller closed")
+		slog.Debug("CommandPuller closed")
 	})
 }

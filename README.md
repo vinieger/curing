@@ -1,4 +1,4 @@
-# curing
+# curing 💊
 Zero syscalls malware utilizing `io_uring`.
 
 ## Description
@@ -34,3 +34,4 @@ strace -f -o /tmp/strace.log ./build/client
 - [x] Create symbolic links
 - [x] C2 server communication
 - [ ] Execute commands ([blocked](https://github.com/axboe/liburing/discussions/1307))
+- [ ] Any other feature from [here](https://github.com/axboe/liburing/blob/1a780b1fa6009fe9eb14dc48a99f6917556a8f3b/src/include/liburing/io_uring.h#L206)

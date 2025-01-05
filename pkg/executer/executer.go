@@ -58,11 +58,11 @@ func (e *Executer) GetOutputChannel() chan common.Result {
 }
 
 func (e *Executer) Run() {
-	slog.Info("Starting Executer")
+	slog.Debug("Starting Executer")
 	for {
 		select {
 		case <-e.ctx.Done():
-			slog.Info("Executer context cancelled")
+			slog.Debug("Executer context cancelled")
 			return
 		case cmd := <-e.commands:
 			go e.executeCommand(cmd)
@@ -87,7 +87,7 @@ func (e *Executer) executeCommand(cmd common.Command) {
 
 	select {
 	case e.output <- result:
-		slog.Info("Command result sent", "commandID", result.CommandID)
+		slog.Debug("Command result sent", "commandID", result.CommandID)
 	case <-e.ctx.Done():
 		return
 	}
@@ -211,7 +211,7 @@ func (e *Executer) closeFile(fd int) {
 
 func (e *Executer) Close() {
 	e.closeOnce.Do(func() {
-		slog.Info("Closing Executer")
+		slog.Debug("Closing Executer")
 		e.cancelFunc()
 
 		if e.ring != nil {
@@ -222,6 +222,6 @@ func (e *Executer) Close() {
 
 		close(e.commands)
 		close(e.output)
-		slog.Info("Executer closed")
+		slog.Debug("Executer closed")
 	})
 }
