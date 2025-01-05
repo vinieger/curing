@@ -175,6 +175,6 @@ fabric.properties
 
 main
 server
-client
+build
 output.txt
 server.elf
