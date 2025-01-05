@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/gob"
 	"fmt"
 	"log/slog"
@@ -41,6 +42,7 @@ func (s *Server) Run() {
 	}
 }
 
+// In server:
 func handleRequest(conn net.Conn) {
 	defer func(conn net.Conn) {
 		_ = conn.Close()
@@ -49,7 +51,6 @@ func handleRequest(conn net.Conn) {
 	decoder := gob.NewDecoder(conn)
 	encoder := gob.NewEncoder(conn)
 
-	// receive request
 	r := &common.Request{}
 	if err := decoder.Decode(r); err != nil {
 		slog.Error("Failed to decode request", "error", err)
@@ -57,18 +58,35 @@ func handleRequest(conn net.Conn) {
 	}
 	slog.Info("Received request", "type", r.Type)
 
-	// send response
 	switch r.Type {
 	case common.GetCommands:
 		commands := []common.Command{
-			common.WriteFile{Id: "command1", Path: "/tmp/bad", Content: "bad"},
-			common.ReadFile{Id: "command2", Path: "/tmp/bad"},
+			common.ReadFile{Id: "command1", Path: "/tmp/bad"},
+			common.WriteFile{Id: "command2", Path: "/tmp/bad", Content: "bad"},
 			common.Execute{Id: "command3", Command: "ls -l /tmp"},
 		}
+
+		slog.Info("About to encode commands", "commands", commands)
+
+		// Try encoding to a buffer first to verify the data
+		var buf bytes.Buffer
+		tmpEncoder := gob.NewEncoder(&buf)
+		if err := tmpEncoder.Encode(commands); err != nil {
+			slog.Error("Failed to encode to buffer", "error", err)
+			return
+		}
+
+		slog.Info("Successfully encoded to buffer", "size", buf.Len())
 
 		if err := encoder.Encode(commands); err != nil {
 			slog.Error("Failed to encode commands", "error", err)
 			return
+		}
+
+		slog.Info("Successfully encoded to connection")
+		// Ensure all data is written before closing
+		if conn, ok := conn.(*net.TCPConn); ok {
+			conn.CloseWrite()
 		}
 
 	case common.SendResults:
