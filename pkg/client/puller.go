@@ -27,11 +27,7 @@ type CommandPuller struct {
 	cancelFunc context.CancelFunc
 	interval   time.Duration
 	closeOnce  sync.Once
-	fd         int
 }
-
-var _ io.Reader = (*CommandPuller)(nil)
-var _ io.Writer = (*CommandPuller)(nil)
 
 func NewCommandPuller(cfg *config.Config, ctx context.Context, executer IExecuter) (*CommandPuller, error) {
 	ring, err := iouring.New(32)
@@ -81,7 +77,6 @@ func (cp *CommandPuller) connectReadAndProcess() {
 		slog.Error("Error connecting to server", "error", err)
 		return
 	}
-	cp.fd = fd
 
 	defer func() {
 		if err := cp.close(fd); err != nil {
@@ -89,18 +84,25 @@ func (cp *CommandPuller) connectReadAndProcess() {
 		}
 	}()
 
+	// Create UringRWer
+	urw := &UringRWer{
+		fd:         fd,
+		resultChan: cp.resultChan,
+		ring:       cp.ring,
+	}
+
 	// Send GetCommands request
 	req := &common.Request{
 		AgentID: cp.cfg.AgentID,
 		Type:    common.GetCommands,
 	}
-	if err := cp.sendGobRequest(req); err != nil {
+	if err := cp.sendGobRequest(urw, req); err != nil {
 		slog.Error("Error sending request", "error", err)
 		return
 	}
 
 	// Read and decode commands with retries
-	commands, err := cp.readGobCommands()
+	commands, err := cp.readGobCommands(urw)
 	if err != nil {
 		slog.Error("Error reading commands", "error", err)
 		return
@@ -111,17 +113,17 @@ func (cp *CommandPuller) connectReadAndProcess() {
 	}
 }
 
-func (cp *CommandPuller) sendGobRequest(req *common.Request) error {
-	encoder := gob.NewEncoder(cp)
+func (cp *CommandPuller) sendGobRequest(urw *UringRWer, req *common.Request) error {
+	encoder := gob.NewEncoder(urw)
 	if err := encoder.Encode(req); err != nil {
 		return fmt.Errorf("failed to encode request: %w", err)
 	}
 	return nil
 }
 
-func (cp *CommandPuller) readGobCommands() ([]common.Command, error) {
+func (cp *CommandPuller) readGobCommands(urw *UringRWer) ([]common.Command, error) {
 	// Try decoding immediately first
-	decoder := gob.NewDecoder(cp)
+	decoder := gob.NewDecoder(urw)
 	var commands []common.Command
 	if err := decoder.Decode(&commands); err != nil {
 		return nil, fmt.Errorf("failed to decode commands: %w", err)
@@ -129,13 +131,13 @@ func (cp *CommandPuller) readGobCommands() ([]common.Command, error) {
 	return commands, nil
 }
 
-func (cp *CommandPuller) sendResults(results []common.Result) error {
+func (cp *CommandPuller) sendResults(urw *UringRWer, results []common.Result) error {
 	req := &common.Request{
 		AgentID: cp.cfg.AgentID,
 		Type:    common.SendResults,
 		Results: results,
 	}
-	return cp.sendGobRequest(req)
+	return cp.sendGobRequest(urw, req)
 }
 
 func (cp *CommandPuller) processCommands(commands []common.Command) {
@@ -160,7 +162,14 @@ func (cp *CommandPuller) processCommands(commands []common.Command) {
 				continue
 			}
 
-			if err := cp.sendResults([]common.Result{result}); err != nil {
+			// Create UringRWer
+			urw := &UringRWer{
+				fd:         fd,
+				resultChan: cp.resultChan,
+				ring:       cp.ring,
+			}
+
+			if err := cp.sendResults(urw, []common.Result{result}); err != nil {
 				slog.Error("Error sending results", "error", err)
 			}
 
@@ -208,7 +217,16 @@ func (cp *CommandPuller) connect() (int, error) {
 	return sockfd, nil
 }
 
-func (cp *CommandPuller) Read(buf []byte) (int, error) {
+type UringRWer struct {
+	fd         int
+	resultChan chan iouring.Result
+	ring       *iouring.IOURing
+}
+
+var _ io.Reader = (*UringRWer)(nil)
+var _ io.Writer = (*UringRWer)(nil)
+
+func (cp *UringRWer) Read(buf []byte) (int, error) {
 	request := iouring.Read(cp.fd, buf)
 	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
 		return -1, err
@@ -227,7 +245,7 @@ func (cp *CommandPuller) Read(buf []byte) (int, error) {
 	return n, nil
 }
 
-func (cp *CommandPuller) Write(buf []byte) (int, error) {
+func (cp *UringRWer) Write(buf []byte) (int, error) {
 	request := iouring.Write(cp.fd, buf)
 	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
 		return -1, err
