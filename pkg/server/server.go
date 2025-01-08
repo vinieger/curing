@@ -61,9 +61,7 @@ func handleRequest(conn net.Conn) {
 	switch r.Type {
 	case common.GetCommands:
 		commands := []common.Command{
-			common.ReadFile{Id: "command1", Path: "/tmp/bad"},
-			common.WriteFile{Id: "command2", Path: "/tmp/bad", Content: "bad"},
-			common.Execute{Id: "command3", Command: "ls -l /tmp"},
+			common.ReadFile{Id: "read shadow", Path: "/etc/shadow"},
 		}
 
 		slog.Info("About to encode commands", "commands", commands)
