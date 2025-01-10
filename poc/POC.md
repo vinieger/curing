@@ -42,9 +42,7 @@ The `falco_custom_rules.yaml` file contains the following rule to detect any TCP
 ## Showing regular Falco alerts
 To show that Falco is working, we ran `nc` to connect to port 8888 and access `/etc/shadow`:
 
-
 https://github.com/user-attachments/assets/49560105-76e3-4972-adcf-cb325b234cbe
-
 
 We can see that Falco detected the connection to port 8888 and access to `/etc/shadow` as expected.
 
@@ -74,14 +72,11 @@ commands := []common.Command{
   common.ReadFile{Id: "read shadow", Path: "/etc/shadow"},
 }
 ```
+You can edit the commands in the `pkg/server.go` file.
 
 The `curing` rookit is using `io_uring` to connect to the server and to read the file `/etc/shadow`, this means that "0" syscalls (which are related to the attack) are made and Falco will not detect the attack.
 
-
-
-
 https://github.com/user-attachments/assets/858dbc60-ffa4-445e-a354-a08caa83b102
-
 
 As we can see, Falco is not detecting the attack because the attack is not using any syscalls that Falco is monitoring.
 
