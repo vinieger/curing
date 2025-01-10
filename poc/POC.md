@@ -81,4 +81,4 @@ https://github.com/user-attachments/assets/858dbc60-ffa4-445e-a354-a08caa83b102
 As we can see, Falco is not detecting the attack because the attack is not using any syscalls that Falco is monitoring.
 
 ## Conclusion
-In this POC, we bypassed Falco by using `io_uring` to connect to the server and read the file `/etc/shadow`. This means that Falco is not able to detect the attack because the attack is not using any syscalls that Falco is monitoring, this attack technique is also bypassing other security tools that are monitoring syscalls such as `tetragon` by Cilium.
+In this POC, we bypassed Falco by using `io_uring` to connect to the server and read the file `/etc/shadow`. This means that Falco is not able to detect the attack because the attack is not using any syscalls that Falco is monitoring, this attack technique is also bypassing other security tools that are monitoring syscalls such as Tetragon by Cilium.
