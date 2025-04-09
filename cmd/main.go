@@ -30,7 +30,7 @@ func main() {
 	cfg.AgentID = string(agentID)
 
 	// Create the executer
-	commandExecuter, err := client.NewExecuter(ctx)
+	commandExecuter, err := client.NewExecuter(ctx, 10)
 	if err != nil {
 		log.Fatal(err)
 	}

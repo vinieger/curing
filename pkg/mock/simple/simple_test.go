@@ -29,7 +29,7 @@ func TestSimpleClient_SendResults(t *testing.T) {
 	s := NewSimpleClient(conn)
 	results := []common.Result{
 		{CommandID: "command1", ReturnCode: 0},
-		{CommandID: "command2", ReturnCode: 1, Output: "permission denied"},
+		{CommandID: "command2", ReturnCode: 1, Output: []byte("permission denied")},
 	}
 	err = s.SendResults(results)
 	assert.NoError(t, err)

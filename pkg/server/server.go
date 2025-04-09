@@ -89,7 +89,8 @@ func handleRequest(conn net.Conn) {
 
 	case common.SendResults:
 		for _, r := range r.Results {
-			slog.Info("Received result", "result", r)
+			slog.Info("Received result", "result", r.CommandID, "returnCode", r.ReturnCode)
+			slog.Info("Output preview", "output", string(r.Output))
 		}
 
 	default:

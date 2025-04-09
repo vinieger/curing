@@ -1,6 +1,6 @@
 {
 	"server": {
-		"host": "<your_server_ip>",
+		"host": "localhost",
 		"port": 8888
 	},
 	"connect_interval_sec": 900

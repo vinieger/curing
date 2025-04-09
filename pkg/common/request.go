@@ -25,5 +25,5 @@ type Request struct {
 type Result struct {
 	CommandID  string
 	ReturnCode int
-	Output     string
+	Output     []byte
 }
