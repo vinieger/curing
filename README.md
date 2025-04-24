@@ -3,7 +3,7 @@ Curing is a POC of a rootkit that uses `io_uring` to perform different tasks wit
 The project was found effective against many of the most popular security tools such as Linux EDRs solutions and container security tools.
 The idea was born at the latest CCC conference #38c3, therefor the name `Curing` which is a mix of `C` and `io_uring`.
 
-To read the full article, check the [blog post](https://<todo>).
+To read the full article, check the [blog post](https://www.armosec.io/blog/io_uring-rootkit-bypasses-linux-security).
 
 ## POC
 You can find a full demo of bypassing Falco with `curing` [here](poc/POC.md).
