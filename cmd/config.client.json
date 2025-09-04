@@ -1,0 +1,7 @@
+{
+  "server": {
+    "host": "curing-server",
+    "port": 8888
+  },
+  "connect_interval_sec": 900
+}

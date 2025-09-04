@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// Load the configuration
-	cfg, err := config.LoadConfig("cmd/config.json")
+	cfg, err := config.LoadConfig("cmd/config.client.json")
 	if err != nil {
 		log.Fatal(err)
 	}

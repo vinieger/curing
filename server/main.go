@@ -6,10 +6,10 @@ import (
 )
 
 func main() {
-	cfg, err := config.LoadConfig("cmd/config.json")
+	cfg, err := config.LoadConfig("cmd/config.server.json")
 	if err != nil {
 		panic(err)
 	}
-	s := server.NewServer(cfg.Server.Port)
+	s := server.NewServer(cfg.Server.Host, cfg.Server.Port)
 	s.Run()
 }

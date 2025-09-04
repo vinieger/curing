@@ -1,0 +1,37 @@
+services:
+  curing-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: curing-server:latest
+    container_name: curing-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./cmd/config.server.json:/app/cmd/config.server.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  curing-client:
+    build:
+      context: .
+    # Optional: you can pin the Dockerfile
+      dockerfile: Dockerfile.client
+    image: curing-client:latest
+    container_name: curing-client
+    depends_on:
+      - curing-server
+    volumes:
+      - machineid:/var/lib/machine-id
+      - ./cmd/config.client.json:/app/cmd/config.client.json:ro
+    # Run on-demand (don't keep it up as a daemon)
+    deploy:
+      replicas: 0
+    security_opt: # docker gives -> "iouring_setup: operation not permitted"
+      - seccomp=unconfined
+
+volumes:
+  machineid:

@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+FROM golang:1.22-alpine AS builder
+WORKDIR /app
+ENV CGO_ENABLED=0
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /out/server server/main.go
+
+FROM alpine:3.20
+WORKDIR /app
+RUN apk add --no-cache netcat-openbsd
+RUN mkdir -p /app/cmd
+COPY --from=builder /out/server /app/server
+COPY cmd/config.server.json /app/cmd/config.server.json
+EXPOSE 8888
+ENTRYPOINT ["/app/server"]

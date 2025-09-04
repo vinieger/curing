@@ -6,34 +6,56 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/amitschendel/curing/pkg/common"
 )
 
 type Server struct {
+	host string
 	port int
 }
 
-func NewServer(port int) *Server {
+func NewServer(host string, port int) *Server {
 	return &Server{
+		host: host,
 		port: port,
 	}
 }
 
 func (s *Server) Run() {
-	slog.Info("Starting server", "port", s.port)
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.port))
+	addr := fmt.Sprintf("%s:%d", s.host, s.port)
+	slog.Info("Starting server", "addr", addr)
+
+	// --- Health server on 9090 (/health) ---
+	go func() {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		})
+		srv := &http.Server{
+			Addr:              "0.0.0.0:9090",
+			Handler:           mux,
+			ReadHeaderTimeout: 2 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("health server failed", "error", err)
+		}
+	}()
+
+	// --- IPv4-only listener for the gob protocol ---
+	ln, err := net.Listen("tcp4", addr) // force IPv4
 	if err != nil {
 		slog.Error("Failed to start server", "error", err)
 		os.Exit(1)
 	}
-	defer func(listener net.Listener) {
-		_ = listener.Close()
-	}(listener)
+	defer ln.Close()
 
 	for {
-		conn, err := listener.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			slog.Error("Failed to accept the connection", "error", err)
 			continue

@@ -184,36 +184,59 @@ func (cp *CommandPuller) processCommands(commands []common.Command) {
 
 // connect establishes a connection to the server
 func (cp *CommandPuller) connect() (int, error) {
-	sockfd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
-	if err != nil {
-		return -1, err
+	host := cp.cfg.Server.Host
+	port := cp.cfg.Server.Port
+
+	// Normalize obvious aliases
+	if host == "localhost" {
+		host = "127.0.0.1"
 	}
 
-	request, err := iouring.Connect(sockfd, &syscall.SockaddrInet4{
-		Port: cp.cfg.Server.Port,
-		Addr: func() [4]byte {
-			var addr [4]byte
-			copy(addr[:], net.ParseIP(cp.cfg.Server.Host).To4())
-			return addr
-		}(),
+	// Resolve to a concrete IPv4 address
+	var ip4 net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ip4 = ip.To4()
+	}
+	if ip4 == nil {
+		ips, err := net.DefaultResolver.LookupIP(cp.ctx, "ip4", host)
+		if err != nil || len(ips) == 0 {
+			return -1, fmt.Errorf("resolve IPv4 for %q failed: %w", host, err)
+		}
+		ip4 = ips[0].To4()
+		if ip4 == nil {
+			return -1, fmt.Errorf("host %q has no A record", host)
+		}
+	}
+
+	// Create IPv4 socket
+	sockfd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		return -1, fmt.Errorf("socket(AF_INET): %w", err)
+	}
+
+	var addr4 [4]byte
+	copy(addr4[:], ip4)
+
+	// io_uring connect
+	req, err := iouring.Connect(sockfd, &syscall.SockaddrInet4{
+		Port: port,
+		Addr: addr4,
 	})
 	if err != nil {
 		syscall.Close(sockfd)
-		return -1, err
+		return -1, fmt.Errorf("connect req: %w", err)
 	}
-
-	if _, err := cp.ring.SubmitRequest(request, cp.resultChan); err != nil {
+	if _, err := cp.ring.SubmitRequest(req, cp.resultChan); err != nil {
 		syscall.Close(sockfd)
-		return -1, err
+		return -1, fmt.Errorf("connect submit: %w", err)
 	}
-
-	result := <-cp.resultChan
-	if result.Err() != nil {
+	res := <-cp.resultChan
+	if res.Err() != nil {
 		syscall.Close(sockfd)
-		return -1, result.Err()
+		return -1, fmt.Errorf("connect result: %w", res.Err())
 	}
 
-	slog.Info("Connected to server", "sockfd", sockfd)
+	slog.Info("Connected (IPv4)", "host", host, "ip", ip4.String(), "port", port, "sockfd", sockfd)
 	return sockfd, nil
 }
 
