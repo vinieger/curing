@@ -1,5 +1,6 @@
 > *This fork was built to allow the poc to be run as container.*
 > see: [FORK_README.md](./FORK_README.md)
+> Credit to https://github.com/armosec/curing
 
 ---
 
