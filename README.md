@@ -1,3 +1,8 @@
+> *This fork was built to allow the poc to be run as container.*
+> see: [FORK_README.md](./FORK_README.md)
+
+---
+
 # Curing 💊
 Curing is a POC of a rootkit that uses `io_uring` to perform different tasks without using any syscalls, making it invisible to security tools which are only monitoring syscalls.
 The project was found effective against many of the most popular security tools such as Linux EDRs solutions and container security tools.
